@@ -342,8 +342,9 @@ func (s CommStrategy) SelectDiscard(g *Game, p *Player) CardEvent {
 		event.Target = selectTarget()
 		// TODO: 出ていないカードを挙げて1枚選ぶ
 		event.Expect = rand.Intn(11)
-	case 1, 5, 6, 8, 9, 10:
+	case 1, 3, 5, 6, 8, 9:
 		event.Target = selectTarget()
+	case 4, 7, 10:
 	}
 	return event
 }
@@ -395,8 +396,9 @@ func (s ManualStrategy) SelectDiscard(g *Game, p *Player) CardEvent {
 		fmt.Println("捜査: 予想は？[1-10]")
 		expect := userInput([]int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
 		event.Expect = expect
-	case 1, 5, 6, 8, 9, 10:
+	case 1, 3, 5, 6, 8, 9:
 		event.Target = target
+	case 4, 7, 10:
 	}
 	return event
 }

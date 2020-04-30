@@ -157,6 +157,7 @@ func (g *Game) Loop() {
 
 		done := func() bool {
 			fmt.Println(g)
+			fmt.Printf("%s の番 \n", p.Name())
 
 			if p.Dropped() {
 				fmt.Printf("%s 脱落 スキップ\n", p.Name())
@@ -179,6 +180,7 @@ func (g *Game) Loop() {
 				debugPrintf("[%d]を選択\n", next)
 				g.Deck.takeBack(remains)
 			} else {
+				fmt.Println("山札から引く: ")
 				next = g.Deck.take()
 				p.Take(next)
 			}
@@ -197,35 +199,48 @@ func (g *Game) Loop() {
 
 			switch event.Card {
 			case 1:
-				if g.boyAppeared {
+				if !g.boyAppeared {
+					fmt.Println("少年1枚目。効果発動なし。")
+				} else {
+					fmt.Println("少年2枚目。革命。公開処刑が発動。")
 					// 公開処刑
 					g.publicExecution(p, event.Target, false)
 				}
 				g.boyAppeared = true
 			case 2: // 捜査
+				fmt.Printf("捜査の効果: %sは%sに手札を言い当てられると脱落。\n", event.Target.Name(), p.Name())
 				g.investigation(p, event.Target, event.Expect)
 			case 3: // 透視
+				fmt.Printf("透視の効果: %sは%sの手札を見ることができる。\n", p.Name(), event.Target.Name())
+				// TODO: Implement here
 			case 4: // 守護
+				fmt.Printf("守護の効果: %sは次の手番まで自分への効果が無効。\n", p.Name())
 				p.SetProtected(true)
 			case 5: // 疫病
+				fmt.Printf("疫病の効果: %sは%sに1枚引かせて、非公開で1枚捨てさせる。\n", p.Name(), event.Target.Name())
 				g.plague(p, event.Target)
 			case 6: // 対決
+				fmt.Printf("対決の効果: %sと%sで手札が小さい方が脱落。\n", p.Name(), event.Target.Name())
 				g.confrontation(p, event.Target)
 			case 7: // 選択
 				p.SetCalledWise(true)
+				fmt.Printf("選択の効果: %sは次ターンで3枚引く。\n", p.Name())
 			case 8: // 交換
-				fmt.Printf("target: %s\n", event.Target.Name())
+				fmt.Printf("交換の効果: %sと%sはカードを交換。\n", p.Name(), event.Target.Name())
 				pc := p.Give()
 				tc := event.Target.Give()
 				p.Take(tc)
 				event.Target.Take(pc)
 			case 9: // 公開処刑
+				fmt.Printf("公開処刑の効果: %sは%sに1枚引かせて、公開し1枚捨てさせる。\n", p.Name(), event.Target.Name())
 				g.publicExecution(p, event.Target, true)
 			case 10:
 				// 有り得ない
 			}
 			return false
 		}()
+
+		fmt.Println("======================================")
 
 		if g.Deck.finished() {
 			fmt.Println("山札なし")
@@ -298,11 +313,11 @@ func (g *Game) publicExecution(executor, target *Player, fromEmperror bool) {
 	// target
 	next := g.Deck.take()
 	target.Take(next)
-	debugPrintf("%s\n", target.Hand())
+	fmt.Printf("%sの手札: %s\n", target.Name(), target.Hand())
 	// TODO: 引数でPairを渡すか？なるべくゲームルールをここで表現するため、こうしたい
 	discard := executor.SelectOnPublicExecution(target, target.Hand())
 	target.DiscardSpecified(discard)
-	fmt.Printf("指定:[%d]\n", discard)
+	fmt.Printf("捨てるカードを指定:[%d]\n", discard)
 
 	if discard == 10 {
 
@@ -372,16 +387,15 @@ func (g *Game) investigation(executor, target *Player, expect int) {
 
 func (g Game) String() string {
 	text := ""
-	text += fmt.Sprintf("=====ターン%d ========================\n", g.turn)
-	text += fmt.Sprintf("= %s の番 \n", g.CurrentPlayer().Name())
+	text += fmt.Sprintf("----- ターン%d ------------------------\n", g.turn)
 	text += fmt.Sprintf("= 残り: %d枚\n", g.Deck.count())
 	if true {
 		text += fmt.Sprintf("= 山札:%v 転生札:%d\n", g.Deck.cards, g.Deck.reincCard)
 		for _, lp := range g.Players {
-			text += fmt.Sprintf("%s\n", lp)
+			text += fmt.Sprintf("= %s\n", lp)
 		}
 	}
-	text += fmt.Sprintf("======================================\n")
+	text += fmt.Sprintf("--------------------------------------\n")
 	return text
 }
 
