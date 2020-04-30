@@ -11,10 +11,6 @@ type Hand struct {
 	cards []int
 }
 
-func NewHand(first, second int) Hand {
-	return Hand{cards: []int{first, second}}
-}
-
 func (h *Hand) Add(c int) {
 	h.cards = append(h.cards, c)
 }
