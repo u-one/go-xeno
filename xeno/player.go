@@ -7,59 +7,100 @@ import (
 	"strconv"
 )
 
-type Pair struct {
-	vars []int
+type Hand struct {
+	cards []int
 }
 
-func NewPair(first, second int) Pair {
-	return Pair{vars: []int{first, second}}
+func NewHand(first, second int) Hand {
+	return Hand{cards: []int{first, second}}
 }
 
-func (p Pair) Slice() []int {
-	return p.vars
+func (h *Hand) Add(c int) {
+	h.cards = append(h.cards, c)
 }
 
-func (p Pair) At(i int) int {
-	if i >= len(p.vars) {
-		log.Fatal("i >= len(p.vars)")
+func (h *Hand) Set(c int) {
+	h.cards = []int{c}
+}
+
+func (h Hand) Get() int {
+	if len(h.cards) > 1 {
+		log.Fatal("Hand.Get() len(h.cards) > 1")
 	}
-	return p.vars[i]
+	return h.cards[0]
 }
 
-func (p Pair) Another(card int) int {
-	if len(p.vars) != 2 {
-		log.Fatal("len(p.pair.vars) != 2")
+func (h *Hand) Remove() int {
+	if len(h.cards) > 1 {
+		log.Fatal("Hand.Remove() len(h.cards) > 1")
+	}
+	c := h.cards[0]
+	h.cards = h.cards[1:]
+	return c
+}
+
+func (h *Hand) Clear() {
+	h.cards = []int{}
+}
+
+func (h Hand) Count() int {
+	return len(h.cards)
+}
+
+func (h Hand) Slice() []int {
+	return h.cards
+}
+
+func (h Hand) At(i int) int {
+	if i >= len(h.cards) {
+		log.Fatal("Hand.At() i >= len(h.cards)")
+	}
+	return h.cards[i]
+}
+
+// TODO: 実際にsliceから除去するようにするか？
+func (h Hand) Another(card int) int {
+	if len(h.cards) != 2 {
+		log.Fatal("Hand.Another() len(h.cards) != 2")
 	}
 	var remain int
-	if p.vars[0] == card {
-		remain = p.vars[1]
-	} else if p.vars[1] == card {
-		remain = p.vars[0]
+	if h.cards[0] == card {
+		remain = h.cards[1]
+	} else if h.cards[1] == card {
+		remain = h.cards[0]
 	} else {
 		// Error
-		log.Panicf("no matching with pair: %v, %d", p, card)
+		log.Panicf("no matching with pair: %v, %d", h, card)
 	}
 	return remain
 }
 
-func (p Pair) Larger() int {
-	if p.vars[0] < p.vars[1] {
-		return p.vars[1]
+func (h Hand) Larger() int {
+	if len(h.cards) != 2 {
+		log.Fatal("Hand.Larger() len(h.cards) != 2")
+	}
+
+	if h.cards[0] < h.cards[1] {
+		return h.cards[1]
 	} else {
-		return p.vars[0]
+		return h.cards[0]
 	}
 }
 
-func (p Pair) Random() int {
+func (h Hand) Random() int {
+	if len(h.cards) != 2 {
+		log.Fatal("Hand.Random() len(h.cards) != 2")
+	}
+
 	if 1 == rand.Intn(2) {
-		return p.vars[1]
+		return h.cards[1]
 	} else {
-		return p.vars[0]
+		return h.cards[0]
 	}
 }
 
-func (p Pair) Has(n int) bool {
-	for _, c := range p.vars {
+func (h Hand) Has(n int) bool {
+	for _, c := range h.cards {
 		if c == n {
 			return true
 		}
@@ -67,31 +108,33 @@ func (p Pair) Has(n int) bool {
 	return false
 }
 
-func (p Pair) String() string {
-	return fmt.Sprintf("[%d][%d]", p.vars[0], p.vars[1])
+func (h Hand) String() string {
+	str := "手札: "
+	for _, c := range h.cards {
+		str += fmt.Sprintf("[%d]", c)
+	}
+	return str
 }
 
 type Playable interface {
-	Take(card int)
-	TakeAndSelect(g *Game, next int) CardEvent
-	SelectFromWise(g *Game, candidates []int) (selected int, remains []int)
-	SelectOnPublicExecution(target Playable, pair Pair) (discard int)
-	SelectOnPlague(target Playable, pair Pair) (discard int)
-	Discard() (discarded int)
-	DiscardFromPair(discard int)
-	Dropout()
-	Reincarnate(newCard int)
-	Has(expect int) bool
-	ID() int
-	Name() string
-	Dropped() bool
-	CalledWise() bool
-	SetCalledWise(bool)
-	SetProtected(bool)
-	Protected() bool
-	Current() int
-	SetCurrent(int)
-	Pair() Pair
+	Take(card int)                                                    // 1枚引く [1->2枚持っている状態に遷移]
+	TakeFromWise(g *Game, candidates []int) (remains []int)           // 自分の賢者イベント 3枚から1枚選ぶ処理 [1->2枚持っている状態に遷移]
+	Discard(g *Game) CardEvent                                        // 通常の２枚の手持ちから選ぶ処理 [2->1枚持っている状態に遷移]
+	SelectOnPublicExecution(target Playable, pair Hand) (discard int) // 相手への公開処刑処理 2枚から1枚選ぶ
+	SelectOnPlague(target Playable, hand Hand) (discard int)          // 相手への疫病イベント処理 2枚から1枚選ぶ
+	DiscardSpecified(discard int)                                     // 自分の選択、相手からの公開処刑、疫病で指定された方を捨てる [2->1枚持っている状態に遷移]
+	ID() int                                                          // プレイヤー情報 ID
+	Name() string                                                     // プレイヤー情報 名前
+	Has(expect int) bool                                              // 相手からの捜査で手持ちと比較
+	Give() int                                                        // 交換時に自分のカードを渡す
+	Reincarnate(newCard int)                                          // 復活札で復活
+	Dropout()                                                         // 脱落
+	Dropped() bool                                                    // 脱落したか
+	SetCalledWise(bool)                                               // 賢者を出したかどうかをセット (要らない?)
+	CalledWise() bool                                                 // 前回賢者を出したかどうか
+	SetProtected(bool)                                                // 守護を出したかどうかをセット(要らない?)
+	Protected() bool                                                  // 前回守護を出したかどうか
+	Hand() Hand
 }
 
 type PlayerConfig struct {
@@ -102,13 +145,12 @@ type PlayerConfig struct {
 type Player struct {
 	id         int
 	name       string
-	current    int
+	hand       Hand // 手札
 	discarded  []int
 	protected  bool
 	calledWise bool
 	dropped    bool
 	manual     bool
-	pair       Pair
 }
 
 var (
@@ -125,6 +167,7 @@ func NewPlayer(conf PlayerConfig) *Player {
 	return &Player{
 		id:     id,
 		name:   name,
+		hand:   Hand{cards: []int{}},
 		manual: conf.Manual,
 	}
 }
@@ -156,39 +199,32 @@ func (p *Player) Protected() bool {
 	return p.protected
 }
 
-func (p *Player) Current() int {
-	return p.current
+func (p *Player) Take(next int) {
+	p.hand.Add(next)
 }
 
-func (p *Player) SetCurrent(cur int) {
-	p.current = cur
+func (p *Player) Give() int {
+	return p.hand.Remove()
 }
 
-func (p *Player) Take(card int) {
-	p.pair = NewPair(p.current, card)
+func (p *Player) Hand() Hand {
+	return p.hand
 }
 
-// TODO: pairメンバがイマイチなのでリファクタ
-func (p *Player) Pair() Pair {
-	return p.pair
-}
-
-func (p *Player) TakeAndSelect(g *Game, next int) CardEvent {
-	if p.current == 0 {
-		p.current = next
+func (p *Player) Discard(g *Game) CardEvent {
+	if p.hand.Count() < 2 {
 		return CardEvent{}
 	}
 
 	var discard int
-	// TODO: pairメンバがイマイチなのでリファクタ
-	p.pair = NewPair(p.current, next)
-	if p.pair.Has(10) {
+	// TODO* Pair
+	if p.hand.Has(10) {
 		// 10は選べない
-		discard = p.pair.Another(10)
+		discard = p.hand.Another(10)
 	} else {
-		discard = p.pair.Random()
+		discard = p.hand.Random()
 	}
-	p.DiscardFromPair(discard)
+	p.DiscardSpecified(discard)
 
 	selectTarget := func() Playable {
 		var target Playable
@@ -218,7 +254,7 @@ func (p *Player) TakeAndSelect(g *Game, next int) CardEvent {
 	return event
 }
 
-func (p *Player) SelectFromWise(g *Game, candidates []int) (selected int, remains []int) {
+func (p *Player) TakeFromWise(g *Game, candidates []int) (remains []int) {
 	// TODO: select logic
 	selectedIdx := rand.Intn(len(candidates))
 	for i, c := range candidates {
@@ -226,47 +262,46 @@ func (p *Player) SelectFromWise(g *Game, candidates []int) (selected int, remain
 			remains = append(remains, c)
 		}
 	}
-	selected = candidates[selectedIdx]
+	selected := candidates[selectedIdx]
+	p.Take(selected)
 	return
 }
 
 // Targetの捨てカードを選ぶ
-func (p *Player) SelectOnPublicExecution(target Playable, pair Pair) (discard int) {
+func (p *Player) SelectOnPublicExecution(target Playable, hand Hand) (discard int) {
 	// 可視
-	return pair.Larger()
+	return hand.Larger()
 }
 
-func (p *Player) SelectOnPlague(target Playable, pair Pair) (discard int) {
+func (p *Player) SelectOnPlague(target Playable, hand Hand) (discard int) {
 	// 不可視
-	return pair.Random()
+	return hand.Random()
 }
 
 // 二枚持っているカードのうち指定されたカードを捨てる
 // TODO: pairメンバがイマイチなのでリファクタ
-func (p *Player) DiscardFromPair(discard int) {
-	remain := p.pair.Another(discard)
+func (p *Player) DiscardSpecified(discard int) {
+	remain := p.hand.Another(discard)
 	p.discarded = append(p.discarded, discard)
-	p.current = remain
-	p.pair = Pair{}
-	return
-}
-
-// 持っているカードを捨てる
-func (p *Player) Discard() (discarded int) {
-	p.discarded = append(p.discarded, p.current)
-	p.current = 0
+	p.hand.Set(remain)
 	return
 }
 
 // 脱落
 func (p *Player) Dropout() {
-	p.Discard()
+	for _, c := range p.hand.Slice() {
+		p.discarded = append(p.discarded, c)
+	}
+	p.hand.Clear()
 	p.dropped = true
 }
 
 // 転生
 func (p *Player) Reincarnate(newCard int) {
-	p.current = newCard
+	for _, c := range p.hand.Slice() {
+		p.discarded = append(p.discarded, c)
+	}
+	p.hand.Set(newCard)
 }
 
 func (p Player) String() string {
@@ -274,11 +309,14 @@ func (p Player) String() string {
 	if p.dropped {
 		alive = "(脱落)"
 	}
-	return fmt.Sprintf("%s %s: 手持ち:%d 捨てたカード:%v", p.name, alive, p.current, p.discarded)
+	return fmt.Sprintf("%s %s: %s 捨てたカード:%v", p.name, alive, p.hand, p.discarded)
 }
 
 func (p Player) Has(expect int) bool {
-	return (p.current == expect)
+	if p.hand.Count() != 1 {
+		log.Fatal("p.hand.Count() != 1")
+	}
+	return p.hand.Has(expect)
 }
 
 func userInput(candidates []int) (num int) {
@@ -328,24 +366,21 @@ func NewManualPlayer(conf PlayerConfig) *ManualPlayer {
 	}
 }
 
-func (p *ManualPlayer) TakeAndSelect(g *Game, next int) CardEvent {
-	fmt.Printf("[%d][%d]\n", p.current, next)
+func (p *ManualPlayer) Discard(g *Game) CardEvent {
+	fmt.Println(p.hand)
 
-	if p.current == 0 {
-		p.current = next
+	if p.hand.Count() == 1 {
 		return CardEvent{}
 	}
 
 	var discard int
 
-	p.Player.pair = NewPair(p.current, next)
-	fmt.Println(p.Player.pair)
-	if p.Player.pair.Has(10) {
-		discard = userInput([]int{p.Player.pair.Another(10)})
+	if p.Player.hand.Has(10) {
+		discard = userInput([]int{p.Player.hand.Another(10)})
 	} else {
-		discard = userInput(p.Player.pair.Slice())
+		discard = userInput(p.Player.hand.Slice())
 	}
-	p.DiscardFromPair(discard)
+	p.DiscardSpecified(discard)
 
 	others := g.OtherPlayers(p)
 	var target Playable
@@ -375,27 +410,28 @@ func (p *ManualPlayer) TakeAndSelect(g *Game, next int) CardEvent {
 	return event
 }
 
-func (p *ManualPlayer) SelectFromWise(g *Game, candidates []int) (selected int, remains []int) {
-	selected = userInput(candidates)
+func (p *ManualPlayer) TakeFromWise(g *Game, candidates []int) (remains []int) {
+	selected := userInput(candidates)
 	for _, c := range candidates {
 		if c != selected {
 			remains = append(remains, c)
 		}
 	}
+	p.Take(selected)
 	return
 }
 
-func (p *ManualPlayer) SelectOnPublicExecution(target Playable, pair Pair) (discard int) {
+func (p *ManualPlayer) SelectOnPublicExecution(target Playable, hand Hand) (discard int) {
 	// 可視
-	fmt.Printf("相手のカード: %s", pair)
+	fmt.Printf("相手のカード: %s", hand)
 	fmt.Println("捨てるカードは？")
-	discard = userInput(pair.Slice())
+	discard = userInput(hand.Slice())
 	return discard
 }
 
-func (p *ManualPlayer) SelectOnPlague(target Playable, pair Pair) (discard int) {
+func (p *ManualPlayer) SelectOnPlague(target Playable, hand Hand) (discard int) {
 	// 不可視
 	fmt.Println("捨てるカードは？ 左:[0], 右[1]")
 	discardIdx := userInput([]int{0, 1})
-	return pair.At(discardIdx)
+	return hand.At(discardIdx)
 }

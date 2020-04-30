@@ -179,21 +179,21 @@ func (g *Game) Loop() {
 					debugPrintf("%s\n", str)
 				}
 				var remains []int
-				next, remains = p.SelectFromWise(g, candidates)
+				remains = p.TakeFromWise(g, candidates)
 				debugPrintf("[%d]を選択\n", next)
-
 				g.Deck.takeBack(remains)
 			} else {
 				next = g.Deck.take()
+				p.Take(next)
 			}
 			p.SetCalledWise(false)
 			p.SetProtected(false)
 
 			debugPrintf("引いたカード: [%d]\n", next)
 			fmt.Println("どちらかを捨てる:")
-			debugPrintf("[%d][%d]\n", p.Current(), next)
+			debugPrintf("%s\n", p.Hand())
 
-			event := p.TakeAndSelect(g, next)
+			event := p.Discard(g)
 
 			if event.Card > 0 {
 				fmt.Printf("捨てたカード: [%d] %s\n", event.Card, CardTypes[event.Card])
@@ -219,9 +219,10 @@ func (g *Game) Loop() {
 				p.SetCalledWise(true)
 			case 8: // 交換
 				fmt.Printf("target: %s\n", event.Target.Name())
-				pc, tc := p.Current(), event.Target.Current()
-				p.SetCurrent(tc)
-				event.Target.SetCurrent(pc)
+				pc := p.Give()
+				tc := event.Target.Give()
+				p.Take(tc)
+				event.Target.Take(pc)
 			case 9: // 公開処刑
 				g.publicExecution(p, event.Target, true)
 			case 10:
@@ -237,9 +238,9 @@ func (g *Game) Loop() {
 			var max, maxi int
 			for i, p := range g.Players {
 				if !p.Dropped() {
-					fmt.Printf("%sのカード: [%d]\n", p.Name(), p.Current())
-					if max < p.Current() {
-						max = p.Current()
+					fmt.Printf("%sのカード: %s\n", p.Name(), p.Hand())
+					if max < p.Hand().Get() {
+						max = p.Hand().Get()
 						maxi = i
 					}
 				}
@@ -273,10 +274,10 @@ func (g *Game) Loop() {
 
 // 対決
 func (g *Game) confrontation(executor, target Playable) {
-	if executor.Current() > target.Current() {
+	if executor.Hand().Get() > target.Hand().Get() {
 		fmt.Printf("%s の勝ち\n", executor.Name())
 		target.Dropout()
-	} else if executor.Current() < target.Current() {
+	} else if executor.Hand().Get() < target.Hand().Get() {
 		fmt.Printf("%s の勝ち\n", target.Name())
 		executor.Dropout()
 	} else {
@@ -301,9 +302,10 @@ func (g *Game) publicExecution(executor, target Playable, fromEmperror bool) {
 	// target
 	next := g.Deck.take()
 	target.Take(next)
-	debugPrintf("%s\n", target.Pair())
-	discard := executor.SelectOnPublicExecution(target, target.Pair())
-	target.DiscardFromPair(discard)
+	debugPrintf("%s\n", target.Hand())
+	// TODO: 引数でPairを渡すか？なるべくゲームルールをここで表現するため、こうしたい
+	discard := executor.SelectOnPublicExecution(target, target.Hand())
+	target.DiscardSpecified(discard)
 	fmt.Printf("指定:[%d]\n", discard)
 
 	if discard == 10 {
@@ -317,7 +319,6 @@ func (g *Game) publicExecution(executor, target Playable, fromEmperror bool) {
 			ok, c := g.Deck.ReincarnateCard()
 			if ok {
 				fmt.Println("転生")
-				target.Discard()
 				target.Reincarnate(c)
 			} else {
 				fmt.Printf("転生不可 %s 脱落\n", target.Name())
@@ -342,9 +343,9 @@ func (g *Game) plague(executor, target Playable) {
 	next := g.Deck.take()
 	target.Take(next)
 	fmt.Println("[?][?]")
-	debugPrintf("%s\n", target.Pair())
-	discard := executor.SelectOnPlague(target, target.Pair())
-	target.DiscardFromPair(discard)
+	debugPrintf("%s\n", target.Hand())
+	discard := executor.SelectOnPlague(target, target.Hand())
+	target.DiscardSpecified(discard)
 	fmt.Printf("指定:[%d]\n", discard)
 
 	if discard == 10 {
@@ -353,7 +354,6 @@ func (g *Game) plague(executor, target Playable) {
 		ok, c := g.Deck.ReincarnateCard()
 		if ok {
 			fmt.Println("転生")
-			target.Discard()
 			target.Reincarnate(c)
 		} else {
 			fmt.Printf("転生不可 %s 脱落\n", target.Name())
