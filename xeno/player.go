@@ -116,30 +116,17 @@ func (h Hand) String() string {
 	return str
 }
 
-type Playable interface {
-	Take(card int)                                                    // 1枚引く [1->2枚持っている状態に遷移]
-	TakeFromWise(g *Game, candidates []int) (remains []int)           // 自分の賢者イベント 3枚から1枚選ぶ処理 [1->2枚持っている状態に遷移]
-	Discard(g *Game) CardEvent                                        // 通常の２枚の手持ちから選ぶ処理 [2->1枚持っている状態に遷移]
-	SelectOnPublicExecution(target Playable, pair Hand) (discard int) // 相手への公開処刑処理 2枚から1枚選ぶ
-	SelectOnPlague(target Playable, hand Hand) (discard int)          // 相手への疫病イベント処理 2枚から1枚選ぶ
-	DiscardSpecified(discard int)                                     // 自分の選択、相手からの公開処刑、疫病で指定された方を捨てる [2->1枚持っている状態に遷移]
-	ID() int                                                          // プレイヤー情報 ID
-	Name() string                                                     // プレイヤー情報 名前
-	Has(expect int) bool                                              // 相手からの捜査で手持ちと比較
-	Give() int                                                        // 交換時に自分のカードを渡す
-	Reincarnate(newCard int)                                          // 復活札で復活
-	Dropout()                                                         // 脱落
-	Dropped() bool                                                    // 脱落したか
-	SetCalledWise(bool)                                               // 賢者を出したかどうかをセット (要らない?)
-	CalledWise() bool                                                 // 前回賢者を出したかどうか
-	SetProtected(bool)                                                // 守護を出したかどうかをセット(要らない?)
-	Protected() bool                                                  // 前回守護を出したかどうか
-	Hand() Hand
-}
-
 type PlayerConfig struct {
 	Name   string
 	Manual bool
+}
+
+// PlayerStrategyによりコンピュータや人間などにより判断する部分をPlayerから移譲
+type PlayerStrategy interface {
+	SelectDiscard(g *Game, p *Player) CardEvent                         // 通常の２枚の手持ちから捨てるカードを選ぶ
+	SelectFromWise(g *Game, candidates []int) int                       // 自分の賢者イベント 3枚から1枚選ぶ
+	SelectOnPublicExecution(p, target *Player, pair Hand) (discard int) // 相手への公開処刑処理 2枚から1枚選ぶ
+	SelectOnPlague(p, target *Player, hand Hand) (discard int)          // 相手への疫病イベント処理 2枚から1枚選ぶ
 }
 
 type Player struct {
@@ -151,6 +138,7 @@ type Player struct {
 	calledWise bool
 	dropped    bool
 	manual     bool
+	strategy   PlayerStrategy // 戦略
 }
 
 var (
@@ -164,11 +152,17 @@ func NewPlayer(conf PlayerConfig) *Player {
 	if len(name) == 0 {
 		name = fmt.Sprintf("プレイヤー%d", id)
 	}
+	var s PlayerStrategy
+	if conf.Manual {
+	} else {
+		s = CommStrategy{}
+	}
 	return &Player{
-		id:     id,
-		name:   name,
-		hand:   Hand{cards: []int{}},
-		manual: conf.Manual,
+		id:       id,
+		name:     name,
+		hand:     Hand{cards: []int{}},
+		manual:   conf.Manual,
+		strategy: s,
 	}
 }
 func (p *Player) ID() int {
@@ -215,67 +209,36 @@ func (p *Player) Discard(g *Game) CardEvent {
 	if p.hand.Count() < 2 {
 		return CardEvent{}
 	}
-
-	var discard int
-	// TODO* Pair
-	if p.hand.Has(10) {
-		// 10は選べない
-		discard = p.hand.Another(10)
-	} else {
-		discard = p.hand.Random()
-	}
-	p.DiscardSpecified(discard)
-
-	selectTarget := func() Playable {
-		var target Playable
-		others := g.OtherPlayers(p)
-		for {
-			// TODO: select target
-			target = others[rand.Intn(len(others))]
-			if !target.Dropped() {
-				break
-			}
-		}
-		if target == nil {
-			log.Fatal("target not found")
-		}
-		return target
-	}
-
-	event := CardEvent{Card: discard}
-	switch event.Card {
-	case 2:
-		event.Target = selectTarget()
-		// TODO: 出ていないカードを挙げて1枚選ぶ
-		event.Expect = rand.Intn(11)
-	case 1, 5, 6, 8, 9, 10:
-		event.Target = selectTarget()
-	}
-	return event
+	e := p.strategy.SelectDiscard(g, p)
+	p.DiscardSpecified(e.Card)
+	return e
 }
 
 func (p *Player) TakeFromWise(g *Game, candidates []int) (remains []int) {
-	// TODO: select logic
-	selectedIdx := rand.Intn(len(candidates))
-	for i, c := range candidates {
-		if i != selectedIdx {
-			remains = append(remains, c)
+	selected := p.strategy.SelectFromWise(g, candidates)
+	found := false
+	for _, c := range candidates {
+		if c == selected && !found {
+			// 見つかった番号1枚目は選択したカードとしてスキップ
+			found = true
+			continue
 		}
+		// 残った2枚をremainsに入れる
+		remains = append(remains, c)
 	}
-	selected := candidates[selectedIdx]
 	p.Take(selected)
 	return
 }
 
 // Targetの捨てカードを選ぶ
-func (p *Player) SelectOnPublicExecution(target Playable, hand Hand) (discard int) {
+func (p *Player) SelectOnPublicExecution(target *Player, hand Hand) (discard int) {
 	// 可視
-	return hand.Larger()
+	return p.strategy.SelectOnPublicExecution(p, target, hand)
 }
 
-func (p *Player) SelectOnPlague(target Playable, hand Hand) (discard int) {
+func (p *Player) SelectOnPlague(target *Player, hand Hand) (discard int) {
 	// 不可視
-	return hand.Random()
+	return p.strategy.SelectOnPlague(p, target, hand)
 }
 
 // 二枚持っているカードのうち指定されたカードを捨てる
@@ -346,44 +309,72 @@ func userInput(candidates []int) (num int) {
 	return
 }
 
-type ManualPlayer struct {
-	Player
+type CommStrategy struct{}
+
+func (s CommStrategy) SelectDiscard(g *Game, p *Player) CardEvent {
+	var discard int
+	if p.hand.Has(10) {
+		// 10は選べない
+		discard = p.hand.Another(10)
+	} else {
+		discard = p.hand.Random()
+	}
+
+	selectTarget := func() *Player {
+		var target *Player
+		others := g.OtherPlayers(p)
+		for {
+			// TODO: select target
+			target = others[rand.Intn(len(others))]
+			if !target.Dropped() {
+				break
+			}
+		}
+		if target == nil {
+			log.Fatal("target not found")
+		}
+		return target
+	}
+
+	event := CardEvent{Card: discard}
+	switch event.Card {
+	case 2:
+		event.Target = selectTarget()
+		// TODO: 出ていないカードを挙げて1枚選ぶ
+		event.Expect = rand.Intn(11)
+	case 1, 5, 6, 8, 9, 10:
+		event.Target = selectTarget()
+	}
+	return event
 }
 
-func NewManualPlayer(conf PlayerConfig) *ManualPlayer {
-	playerCount++
-	id := playerCount
-	name := conf.Name
-	if len(name) == 0 {
-		name = fmt.Sprintf("プレイヤー%d", id)
-	}
-	return &ManualPlayer{
-		Player{
-			id:     id,
-			name:   name,
-			manual: conf.Manual,
-		},
-	}
+func (s CommStrategy) SelectFromWise(g *Game, candidates []int) int {
+	// TODO: select logic
+	return candidates[rand.Intn(len(candidates))]
 }
 
-func (p *ManualPlayer) Discard(g *Game) CardEvent {
+func (s CommStrategy) SelectOnPublicExecution(player, target *Player, hand Hand) int {
+	return hand.Larger()
+}
+
+func (s CommStrategy) SelectOnPlague(player, target *Player, hand Hand) int {
+	return hand.Random()
+}
+
+type ManualStrategy struct{}
+
+func (s ManualStrategy) SelectDiscard(g *Game, p *Player) CardEvent {
 	fmt.Println(p.hand)
 
-	if p.hand.Count() == 1 {
-		return CardEvent{}
-	}
-
 	var discard int
-
-	if p.Player.hand.Has(10) {
-		discard = userInput([]int{p.Player.hand.Another(10)})
+	if p.hand.Has(10) {
+		discard = userInput([]int{p.hand.Another(10)})
 	} else {
-		discard = userInput(p.Player.hand.Slice())
+		discard = userInput(p.hand.Slice())
 	}
-	p.DiscardSpecified(discard)
 
 	others := g.OtherPlayers(p)
-	var target Playable
+	var target *Player
 	if len(others) == 1 {
 		target = others[0]
 	} else {
@@ -410,18 +401,12 @@ func (p *ManualPlayer) Discard(g *Game) CardEvent {
 	return event
 }
 
-func (p *ManualPlayer) TakeFromWise(g *Game, candidates []int) (remains []int) {
+func (s ManualStrategy) SelectFromWise(g *Game, candidates []int) int {
 	selected := userInput(candidates)
-	for _, c := range candidates {
-		if c != selected {
-			remains = append(remains, c)
-		}
-	}
-	p.Take(selected)
-	return
+	return selected
 }
 
-func (p *ManualPlayer) SelectOnPublicExecution(target Playable, hand Hand) (discard int) {
+func (s ManualStrategy) SelectOnPublicExecution(player, target *Player, hand Hand) (discard int) {
 	// 可視
 	fmt.Printf("相手のカード: %s", hand)
 	fmt.Println("捨てるカードは？")
@@ -429,7 +414,7 @@ func (p *ManualPlayer) SelectOnPublicExecution(target Playable, hand Hand) (disc
 	return discard
 }
 
-func (p *ManualPlayer) SelectOnPlague(target Playable, hand Hand) (discard int) {
+func (s ManualStrategy) SelectOnPlague(player, target *Player, hand Hand) (discard int) {
 	// 不可視
 	fmt.Println("捨てるカードは？ 左:[0], 右[1]")
 	discardIdx := userInput([]int{0, 1})

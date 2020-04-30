@@ -27,7 +27,7 @@ var (
 // CardEvent represents event occured by discard
 type CardEvent struct {
 	Card   int
-	Target Playable
+	Target *Player
 	Expect int // 捜査用。TODO: いずれ分離
 }
 
@@ -104,7 +104,7 @@ type GameConfig struct {
 
 type Game struct {
 	Deck        *Deck
-	Players     []Playable
+	Players     []*Player
 	boyAppeared bool
 	turn        int
 }
@@ -112,13 +112,9 @@ type Game struct {
 func NewGame(conf GameConfig) *Game {
 	deck := newDeck()
 
-	players := make([]Playable, len(conf.Players))
+	players := make([]*Player, len(conf.Players))
 	for i, c := range conf.Players {
-		if c.Manual {
-			players[i] = NewManualPlayer(c)
-		} else {
-			players[i] = NewPlayer(c)
-		}
+		players[i] = NewPlayer(c)
 	}
 
 	return &Game{
@@ -127,7 +123,7 @@ func NewGame(conf GameConfig) *Game {
 	}
 }
 
-func (g Game) CurrentPlayer() Playable {
+func (g Game) CurrentPlayer() *Player {
 	i := g.turn % len(g.Players)
 	return g.Players[i]
 }
@@ -142,8 +138,8 @@ func (g Game) AlivePlayerCount() int {
 	return alive
 }
 
-func (g Game) OtherPlayers(p Playable) []Playable {
-	others := []Playable{}
+func (g Game) OtherPlayers(p *Player) []*Player {
+	others := []*Player{}
 	for _, op := range g.Players {
 		if op.ID() != p.ID() {
 			others = append(others, op)
@@ -273,7 +269,7 @@ func (g *Game) Loop() {
 }
 
 // 対決
-func (g *Game) confrontation(executor, target Playable) {
+func (g *Game) confrontation(executor, target *Player) {
 	if executor.Hand().Get() > target.Hand().Get() {
 		fmt.Printf("%s の勝ち\n", executor.Name())
 		target.Dropout()
@@ -288,7 +284,7 @@ func (g *Game) confrontation(executor, target Playable) {
 }
 
 // 公開処刑
-func (g *Game) publicExecution(executor, target Playable, fromEmperror bool) {
+func (g *Game) publicExecution(executor, target *Player, fromEmperror bool) {
 	fmt.Printf("公開処刑 ターゲット:%s\n", target.Name())
 	if target.Protected() {
 		fmt.Printf("ターゲット:%sは守護下\n", target.Name())
@@ -329,7 +325,7 @@ func (g *Game) publicExecution(executor, target Playable, fromEmperror bool) {
 }
 
 // 疫病
-func (g *Game) plague(executor, target Playable) {
+func (g *Game) plague(executor, target *Player) {
 	fmt.Printf("疫病 ターゲット:%s\n", target.Name())
 	if target.Protected() {
 		fmt.Printf("ターゲット:%sは守護下\n", target.Name())
@@ -362,7 +358,7 @@ func (g *Game) plague(executor, target Playable) {
 	}
 }
 
-func (g *Game) investigation(executor, target Playable, expect int) {
+func (g *Game) investigation(executor, target *Player, expect int) {
 	fmt.Printf("%sに対する捜査 %d\n", target.Name(), expect)
 
 	correct := target.Has(expect)
