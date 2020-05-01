@@ -152,6 +152,7 @@ func NewPlayer(conf PlayerConfig) *Player {
 	}
 	var s PlayerStrategy
 	if conf.Manual {
+		s = ManualStrategy{}
 	} else {
 		s = CommStrategy{}
 	}
