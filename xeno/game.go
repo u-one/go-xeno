@@ -164,6 +164,16 @@ func (g Game) OtherPlayers(p *Player) []*Player {
 	return others
 }
 
+func (g Game) Player(id PlayerID) *Player {
+	for _, p := range g.Players {
+		if p.ID() == id {
+			return p
+		}
+	}
+	log.Fatalf("Game.Player():invalid PlayerID: %d", id)
+	return nil
+}
+
 func (g *Game) Loop() {
 	fmt.Println("山札:", g.Deck)
 	fmt.Println("プレイヤー数:", len(g.Players))
@@ -419,6 +429,6 @@ func (g Game) String() string {
 }
 
 func debugPrintf(msg string, args ...interface{}) {
-	m := "--" + msg
+	m := "--[DEBUG]" + msg
 	fmt.Printf(m, args...)
 }

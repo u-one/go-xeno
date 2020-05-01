@@ -209,6 +209,10 @@ func (p *Player) Hand() Hand {
 	return p.hand
 }
 
+func (p *Player) Discarded() []int {
+	return append([]int{}, p.discarded...)
+}
+
 func (p *Player) Discard(g *Game) CardEvent {
 	if p.hand.Count() < 2 {
 		return CardEvent{}
@@ -343,36 +347,96 @@ func (s CommStrategy) SelectDiscard(g *Game, p *Player) CardEvent {
 		discard = p.hand.Random()
 	}
 
-	selectTarget := func() *Player {
-		var target *Player
-		others := g.OtherPlayers(p)
-		for {
-			// TODO: select target
-			target = others[rand.Intn(len(others))]
-			if !target.Dropped() {
-				break
-			}
-		}
-		if target == nil {
-			log.Fatal("target not found")
-		}
-		return target
-	}
-
 	event := CardEvent{Card: discard}
 	switch event.Card {
 	case 2:
-		event.Target = selectTarget()
-		// TODO: 出ていないカードを挙げて1枚選ぶ
-		event.Expect = rand.Intn(11)
-	case 1, 3, 5, 6, 9:
-		event.Target = selectTarget()
+		event.Target, event.Expect = s.estimateOpponentHand(g, p)
+	case 1, 3, 5, 9:
+		event.Target = s.randomSelectTarget(g, p)
+	case 6:
+		// TODO: 相手の持っているカードを考慮
+		event.Target = s.randomSelectTarget(g, p)
 	case 8:
-		event.Target = selectTarget()
+		event.Target = s.randomSelectTarget(g, p)
 		s.opponentInfo[event.Target.ID()] = p.hand.Another(discard)
 	case 4, 7, 10:
 	}
 	return event
+}
+
+func (s CommStrategy) randomSelectTarget(g *Game, p *Player) (target *Player) {
+	others := g.OtherPlayers(p)
+	for {
+		target = others[rand.Intn(len(others))]
+		if !target.Dropped() {
+			break
+		}
+	}
+	if target == nil {
+		log.Fatal("target not found")
+	}
+	return target
+}
+
+func (s CommStrategy) estimateOpponentHand(g *Game, p *Player) (target *Player, card int) {
+	// Decide from opponent info
+	if len(s.opponentInfo) > 0 {
+		targetIdx := rand.Intn(len(s.opponentInfo))
+		idx := 0
+		for id, c := range s.opponentInfo {
+			if idx == targetIdx {
+				target = g.Player(id)
+				if target.Dropped() {
+					continue
+				}
+				card = c
+				return
+			}
+		}
+	}
+
+	// Then, estimate
+	appeared := append([]int{}, p.Hand().Slice()...)
+	for _, p := range g.Players {
+		d := p.Discarded()
+		for _, c := range d {
+			appeared = append(appeared, c)
+		}
+	}
+
+	// put all cards and num of each cards
+	hiddens := make(map[int]int, len(AllCards))
+	for _, c := range AllCards {
+		hiddens[c]++
+	}
+
+	// remove already appeared on game
+	for _, c := range appeared {
+		hiddens[c]--
+	}
+
+	// find largest count of each cards
+	maxCount := 0
+	for _, n := range hiddens {
+		if n > maxCount {
+			maxCount = n
+		}
+	}
+
+	debugPrintf("estimateOpponentHand - hidden cards: %v\n", hiddens)
+
+	// select candidates from cards which remains largest count
+	candidates := []int{}
+	for c, n := range hiddens {
+		if n == maxCount {
+			candidates = append(candidates, c)
+		}
+	}
+
+	// finally select randomly
+	card = candidates[rand.Intn(len(candidates))]
+	target = s.randomSelectTarget(g, p)
+	return
 }
 
 func (s CommStrategy) SelectFromWise(g *Game, candidates []int) int {
