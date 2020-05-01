@@ -159,7 +159,7 @@ func NewPlayer(conf PlayerConfig) *Player {
 	if conf.Manual {
 		s = ManualStrategy{}
 	} else {
-		s = CommStrategy{}
+		s = CommStrategy{opponentInfo: map[PlayerID]int{}}
 	}
 	return &Player{
 		id:       id,
