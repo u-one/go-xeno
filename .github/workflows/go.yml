@@ -11,6 +11,8 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
+    env:
+      GO111MODULE: on
     steps:
 
     - name: Set up Go 1.x
@@ -38,7 +40,7 @@ jobs:
         GO111MODULE=on go get github.com/golang/mock/mockgen@latest
         go generate ./...
         go test -v ./...
-        
+
     - name: Run
       run: go run ./main.go
-      
+
