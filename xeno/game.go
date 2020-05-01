@@ -153,94 +153,7 @@ func (g *Game) Loop() {
 	fmt.Println("プレイヤー数:", len(g.Players))
 
 	for {
-		p := g.CurrentPlayer()
-
-		done := func() bool {
-			fmt.Println(g)
-			fmt.Printf("%s の番 \n", p.Name())
-
-			if p.Dropped() {
-				fmt.Printf("%s 脱落 スキップ\n", p.Name())
-				return false
-			}
-
-			var next int
-			if p.CalledWise() {
-				fmt.Println("賢者からの選択: ")
-				candidates := g.Deck.takeN(3)
-				{
-					str := ""
-					for _, c := range candidates {
-						str += fmt.Sprintf("[%d]", c)
-					}
-					debugPrintf("%s\n", str)
-				}
-				var remains []int
-				remains = p.TakeFromWise(g, candidates)
-				debugPrintf("[%d]を選択\n", next)
-				g.Deck.takeBack(remains)
-			} else {
-				fmt.Println("山札から引く: ")
-				next = g.Deck.take()
-				p.Take(next)
-			}
-			p.SetCalledWise(false)
-			p.SetProtected(false)
-
-			debugPrintf("引いたカード: [%d]\n", next)
-			fmt.Println("どちらかを捨てる:")
-			debugPrintf("%s\n", p.Hand())
-
-			event := p.Discard(g)
-
-			if event.Card > 0 {
-				fmt.Printf("捨てたカード: [%d] %s\n", event.Card, CardTypes[event.Card])
-			}
-
-			switch event.Card {
-			case 1:
-				if !g.boyAppeared {
-					fmt.Println("少年1枚目。効果発動なし。")
-				} else {
-					fmt.Println("少年2枚目。革命。公開処刑が発動。")
-					// 公開処刑
-					g.publicExecution(p, event.Target, false)
-				}
-				g.boyAppeared = true
-			case 2: // 捜査
-				fmt.Printf("捜査の効果: %sは%sに手札を言い当てられると脱落。\n", event.Target.Name(), p.Name())
-				g.investigation(p, event.Target, event.Expect)
-			case 3: // 透視
-				fmt.Printf("透視の効果: %sは%sの手札を見ることができる。\n", p.Name(), event.Target.Name())
-				// TODO: Implement here
-			case 4: // 守護
-				fmt.Printf("守護の効果: %sは次の手番まで自分への効果が無効。\n", p.Name())
-				p.SetProtected(true)
-			case 5: // 疫病
-				fmt.Printf("疫病の効果: %sは%sに1枚引かせて、非公開で1枚捨てさせる。\n", p.Name(), event.Target.Name())
-				g.plague(p, event.Target)
-			case 6: // 対決
-				fmt.Printf("対決の効果: %sと%sで手札が小さい方が脱落。\n", p.Name(), event.Target.Name())
-				g.confrontation(p, event.Target)
-			case 7: // 選択
-				p.SetCalledWise(true)
-				fmt.Printf("選択の効果: %sは次ターンで3枚引く。\n", p.Name())
-			case 8: // 交換
-				fmt.Printf("交換の効果: %sと%sはカードを交換。\n", p.Name(), event.Target.Name())
-				pc := p.Give()
-				tc := event.Target.Give()
-				p.Take(tc)
-				event.Target.Take(pc)
-			case 9: // 公開処刑
-				fmt.Printf("公開処刑の効果: %sは%sに1枚引かせて、公開し1枚捨てさせる。\n", p.Name(), event.Target.Name())
-				g.publicExecution(p, event.Target, true)
-			case 10:
-				// 有り得ない
-			}
-			return false
-		}()
-
-		fmt.Println("======================================")
+		g.ProcessTurn()
 
 		if g.Deck.finished() {
 			fmt.Println("山札なし")
@@ -256,22 +169,17 @@ func (g *Game) Loop() {
 					}
 				}
 			}
-			for i := range g.Players {
+			for i, p := range g.Players {
 				if i != maxi && !p.Dropped() {
 					p.Dropout()
 					fmt.Printf("%s 脱落\n", p.Name())
 				}
 			}
-			done = true
+			break
 		} else if g.AlivePlayerCount() < 2 {
 			fmt.Println("ゲーム終了")
-			done = true
-		}
-
-		if done {
 			break
 		}
-
 		g.turn++
 	}
 
@@ -281,6 +189,95 @@ func (g *Game) Loop() {
 		}
 	}
 	fmt.Println("_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/")
+}
+
+func (g *Game) ProcessTurn() {
+	fmt.Println(g)
+	defer fmt.Println("======================================")
+
+	p := g.CurrentPlayer()
+
+	fmt.Printf("%s の番 \n", p.Name())
+
+	if p.Dropped() {
+		fmt.Printf("%s 脱落 スキップ\n", p.Name())
+		return
+	}
+
+	var next int
+	if p.CalledWise() {
+		fmt.Println("賢者からの選択: ")
+		candidates := g.Deck.takeN(3)
+		{
+			str := ""
+			for _, c := range candidates {
+				str += fmt.Sprintf("[%d]", c)
+			}
+			debugPrintf("%s\n", str)
+		}
+		var remains []int
+		remains = p.TakeFromWise(g, candidates)
+		debugPrintf("[%d]を選択\n", next)
+		g.Deck.takeBack(remains)
+	} else {
+		fmt.Println("山札から引く: ")
+		next = g.Deck.take()
+		p.Take(next)
+	}
+	p.SetCalledWise(false)
+	p.SetProtected(false)
+
+	debugPrintf("引いたカード: [%d]\n", next)
+	fmt.Println("どちらかを捨てる:")
+	debugPrintf("%s\n", p.Hand())
+
+	event := p.Discard(g)
+
+	if event.Card > 0 {
+		fmt.Printf("捨てたカード: [%d] %s\n", event.Card, CardTypes[event.Card])
+	}
+
+	switch event.Card {
+	case 1:
+		if !g.boyAppeared {
+			fmt.Println("少年1枚目。効果発動なし。")
+		} else {
+			fmt.Println("少年2枚目。革命。公開処刑が発動。")
+			// 公開処刑
+			g.publicExecution(p, event.Target, false)
+		}
+		g.boyAppeared = true
+	case 2: // 捜査
+		fmt.Printf("捜査の効果: %sは%sに手札を言い当てられると脱落。\n", event.Target.Name(), p.Name())
+		g.investigation(p, event.Target, event.Expect)
+	case 3: // 透視
+		fmt.Printf("透視の効果: %sは%sの手札を見ることができる。\n", p.Name(), event.Target.Name())
+		// TODO: Implement here
+	case 4: // 守護
+		fmt.Printf("守護の効果: %sは次の手番まで自分への効果が無効。\n", p.Name())
+		p.SetProtected(true)
+	case 5: // 疫病
+		fmt.Printf("疫病の効果: %sは%sに1枚引かせて、非公開で1枚捨てさせる。\n", p.Name(), event.Target.Name())
+		g.plague(p, event.Target)
+	case 6: // 対決
+		fmt.Printf("対決の効果: %sと%sで手札が小さい方が脱落。\n", p.Name(), event.Target.Name())
+		g.confrontation(p, event.Target)
+	case 7: // 選択
+		p.SetCalledWise(true)
+		fmt.Printf("選択の効果: %sは次ターンで3枚引く。\n", p.Name())
+	case 8: // 交換
+		fmt.Printf("交換の効果: %sと%sはカードを交換。\n", p.Name(), event.Target.Name())
+		pc := p.Give()
+		tc := event.Target.Give()
+		p.Take(tc)
+		event.Target.Take(pc)
+	case 9: // 公開処刑
+		fmt.Printf("公開処刑の効果: %sは%sに1枚引かせて、公開し1枚捨てさせる。\n", p.Name(), event.Target.Name())
+		g.publicExecution(p, event.Target, true)
+	case 10:
+		// 有り得ない
+	}
+	return
 }
 
 // 対決
