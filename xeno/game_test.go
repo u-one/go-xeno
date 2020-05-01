@@ -42,6 +42,8 @@ func TestGame_ProcessTurn(t *testing.T) {
 	mockStrategyH.EXPECT().SelectDiscard(gomock.Any(), gomock.Any()).Return(CardEvent{Card: 5, Target: playerN})
 	mockStrategyH.EXPECT().SelectOnPlague(gomock.Any(), gomock.Any(), Hand{cards: []int{8, 4}}).Return(4)
 
+	mockStrategyN.EXPECT().OnOpponentEvent(gomock.Any(), gomock.Any(), playerH, CardEvent{Card: 5, Target: playerN})
+
 	g.ProcessTurn()
 
 	gwant := Game{
@@ -149,6 +151,8 @@ func TestGame_ProcessTurn_Wise(t *testing.T) {
 	mockShuffler.EXPECT().Shuffle([]int{7, 8, 4}).Return([]int{7, 8, 4})
 	mockStrategyN.EXPECT().SelectDiscard(gomock.Any(), gomock.Any()).Return(CardEvent{Card: 1, Target: playerH})
 	mockStrategyN.EXPECT().SelectOnPublicExecution(gomock.Any(), gomock.Any(), Hand{cards: []int{6, 7}}).Return(7)
+
+	mockStrategyH.EXPECT().OnOpponentEvent(gomock.Any(), gomock.Any(), playerN, CardEvent{Card: 1, Target: playerH})
 
 	g.ProcessTurn()
 

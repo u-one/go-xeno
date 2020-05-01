@@ -249,6 +249,11 @@ func (g *Game) ProcessTurn() {
 
 	event := p.Discard(g)
 
+	// Notify other players
+	for _, op := range g.OtherPlayers(p) {
+		op.OnOpponentEvent(g, p, event)
+	}
+
 	if event.Card > 0 {
 		fmt.Printf("捨てたカード: [%d] %s\n", event.Card, CardTypes[event.Card])
 	}
@@ -268,7 +273,8 @@ func (g *Game) ProcessTurn() {
 		g.investigation(p, event.Target, event.Expect)
 	case 3: // 透視
 		fmt.Printf("透視の効果: %sは%sの手札を見ることができる。\n", p.Name(), event.Target.Name())
-		// TODO: Implement here
+		c := event.Target.ShowForClairvoyance()
+		p.KnowByClairvoyance(g, event.Target, c)
 	case 4: // 守護
 		fmt.Printf("守護の効果: %sは次の手番まで自分への効果が無効。\n", p.Name())
 		p.SetProtected(true)

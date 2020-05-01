@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"os"
 	"strconv"
 )
 
@@ -125,10 +126,14 @@ type PlayerStrategy interface {
 	SelectFromWise(g *Game, candidates []int) int                       // 自分の賢者イベント 3枚から1枚選ぶ
 	SelectOnPublicExecution(p, target *Player, pair Hand) (discard int) // 相手への公開処刑処理 2枚から1枚選ぶ
 	SelectOnPlague(p, target *Player, hand Hand) (discard int)          // 相手への疫病イベント処理 2枚から1枚選ぶ
+	KnowByClairvoyance(g *Game, player, target *Player, c int)
+	OnOpponentEvent(g *Game, player, opponent *Player, e CardEvent)
 }
 
+type PlayerID int
+
 type Player struct {
-	id         int
+	id         PlayerID
 	name       string
 	hand       Hand // 手札
 	discarded  []int
@@ -145,7 +150,7 @@ var (
 
 func NewPlayer(conf PlayerConfig) *Player {
 	playerCount++
-	id := playerCount
+	id := PlayerID(playerCount)
 	name := conf.Name
 	if len(name) == 0 {
 		name = fmt.Sprintf("プレイヤー%d", id)
@@ -164,7 +169,7 @@ func NewPlayer(conf PlayerConfig) *Player {
 		strategy: s,
 	}
 }
-func (p *Player) ID() int {
+func (p *Player) ID() PlayerID {
 	return p.id
 }
 
@@ -266,6 +271,19 @@ func (p *Player) Reincarnate(newCard int) {
 	p.hand.Set(newCard)
 }
 
+// 透視による開示
+func (p Player) ShowForClairvoyance() int {
+	return p.hand.Get()
+}
+
+func (p *Player) KnowByClairvoyance(g *Game, target *Player, c int) {
+	p.strategy.KnowByClairvoyance(g, p, target, c)
+}
+
+func (p *Player) OnOpponentEvent(g *Game, opponent *Player, e CardEvent) {
+	p.strategy.OnOpponentEvent(g, p, opponent, e)
+}
+
 func (p Player) String() string {
 	alive := ""
 	if p.dropped {
@@ -293,6 +311,10 @@ func userInput(candidates []int) (num int) {
 			continue
 		}
 		valid := false
+		if len(candidates) == 0 {
+			// just waited for hit Enter
+			return
+		}
 		for _, c := range candidates {
 			if c == i {
 				valid = true
@@ -308,7 +330,9 @@ func userInput(candidates []int) (num int) {
 	return
 }
 
-type CommStrategy struct{}
+type CommStrategy struct {
+	opponentInfo map[PlayerID]int
+}
 
 func (s CommStrategy) SelectDiscard(g *Game, p *Player) CardEvent {
 	var discard int
@@ -341,8 +365,11 @@ func (s CommStrategy) SelectDiscard(g *Game, p *Player) CardEvent {
 		event.Target = selectTarget()
 		// TODO: 出ていないカードを挙げて1枚選ぶ
 		event.Expect = rand.Intn(11)
-	case 1, 3, 5, 6, 8, 9:
+	case 1, 3, 5, 6, 9:
 		event.Target = selectTarget()
+	case 8:
+		event.Target = selectTarget()
+		s.opponentInfo[event.Target.ID()] = p.hand.Another(discard)
 	case 4, 7, 10:
 	}
 	return event
@@ -359,6 +386,18 @@ func (s CommStrategy) SelectOnPublicExecution(player, target *Player, hand Hand)
 
 func (s CommStrategy) SelectOnPlague(player, target *Player, hand Hand) int {
 	return hand.Random()
+}
+
+func (s CommStrategy) KnowByClairvoyance(g *Game, player, target *Player, c int) {
+	s.opponentInfo[target.ID()] = c
+}
+
+func (s CommStrategy) OnOpponentEvent(g *Game, player, opponent *Player, e CardEvent) {
+	if c, ok := s.opponentInfo[opponent.ID()]; ok {
+		if c == e.Card {
+			delete(s.opponentInfo, opponent.ID())
+		}
+	}
 }
 
 type ManualStrategy struct{}
@@ -420,4 +459,17 @@ func (s ManualStrategy) SelectOnPlague(player, target *Player, hand Hand) (disca
 	fmt.Println("捨てるカードは？ 左:[0], 右[1]")
 	discardIdx := userInput([]int{0, 1})
 	return hand.At(discardIdx)
+}
+
+func (s ManualStrategy) KnowByClairvoyance(g *Game, player, target *Player, c int) {
+	fmt.Printf("%sの手札: [%d]\n", target.Name(), c)
+	fmt.Println("put any char")
+	input := make([]byte, 1)
+	os.Stdin.Read(input)
+}
+
+func (s ManualStrategy) OnOpponentEvent(g *Game, player, opponent *Player, e CardEvent) {
+	fmt.Println("put any char")
+	input := make([]byte, 1)
+	os.Stdin.Read(input)
 }
