@@ -1,5 +1,7 @@
 package xeno
 
+//go:generate mockgen -source=player.go -destination=./player_mock.go -package xeno
+
 import (
 	"fmt"
 	"log"

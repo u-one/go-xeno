@@ -1,5 +1,7 @@
 package xeno
 
+//go:generate mockgen -source=game.go -destination=./game_mock.go -package xeno
+
 import (
 	"fmt"
 	"log"
@@ -34,20 +36,36 @@ type CardEvent struct {
 func pause() {
 }
 
+// Define Shuffler interface to make test easier
+type Shuffler interface {
+	Shuffle([]int) []int
+}
+
+type RandomShuffler struct{}
+
+func (s RandomShuffler) Shuffle(cards []int) []int {
+	rand.Shuffle(len(cards), func(i, j int) {
+		cards[i], cards[j] = cards[j], cards[i]
+	})
+	return cards
+}
+
 type Deck struct {
 	cards     []int
 	reincCard int
+	shuffler  Shuffler
 }
 
 func newDeck() *Deck {
 	cards := AllCards
-	rand.Shuffle(len(cards), func(i, j int) {
-		cards[i], cards[j] = cards[j], cards[i]
-	})
+
+	shuffler := RandomShuffler{}
+	cards = shuffler.Shuffle(cards)
 
 	d := Deck{
 		cards:     cards[:len(cards)-1],
 		reincCard: cards[len(cards)-1],
+		shuffler:  shuffler,
 	}
 
 	return &d
@@ -82,9 +100,7 @@ func (d *Deck) takeN(n int) []int {
 func (d *Deck) takeBack(cards []int) {
 	d.cards = append(d.cards, cards...)
 
-	rand.Shuffle(len(d.cards), func(i, j int) {
-		d.cards[i], d.cards[j] = d.cards[j], d.cards[i]
-	})
+	d.cards = d.shuffler.Shuffle(d.cards)
 }
 
 // 転生
